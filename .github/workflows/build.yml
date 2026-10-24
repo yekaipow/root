@@ -25,23 +25,36 @@ jobs:
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           CMDTOOLS=$(ls -d "$SDK"/cmdline-tools/*/bin | head -1)
           echo "$CMDTOOLS" >> "$GITHUB_PATH"
-          echo "Using sdkmanager from: $CMDTOOLS"
 
       - name: Accept licenses and install SDK packages
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" \
+                     "ndk;27.2.12479018" "cmake;3.22.1"
+
+      - name: Dump project config
+        working-directory: LSPromise
+        run: |
+          cat gradle/wrapper/gradle-wrapper.properties
+          grep -rE "com.android.tools.build:gradle|com.android.application" build.gradle* app/build.gradle* || true
+          grep -rE "compileSdk|targetSdk" app/build.gradle* || true
 
       - name: Build release APK
         working-directory: LSPromise
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace --info 2>&1 | tee gradle.log
+
+      - name: Upload gradle log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-log
+          path: LSPromise/gradle.log
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: LSPromise-release-apk
-          path: |
-            LSPromise/app/build/outputs/apk/release/*.apk
+          path: LSPromise/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
