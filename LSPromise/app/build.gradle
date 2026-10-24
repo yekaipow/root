@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace 'org.lsposed.lspromise'
-    compileSdk 37.0
+    compileSdk "android-37.0"
     ndkVersion "27.2.12479018"
 
     defaultConfig {
