@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,32 +20,81 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Configure Android SDK
+      - name: Locate Android SDK
         run: |
-          SDK="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
-          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          CMDTOOLS=$(ls -d "$SDK"/cmdline-tools/*/bin | head -1)
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          if [ ! -d "$SDK" ]; then
+            echo "Android SDK not found at $SDK" >&2
+            exit 1
+          fi
+          CMDTOOLS="$(ls -d "$SDK"/cmdline-tools/*/bin 2>/dev/null | head -1)"
+          if [ -z "$CMDTOOLS" ]; then
+            echo "cmdline-tools not found under $SDK" >&2
+            ls -la "$SDK" >&2
+            exit 1
+          fi
+          {
+            echo "ANDROID_SDK_ROOT=$SDK"
+            echo "ANDROID_HOME=$SDK"
+            echo "ANDROID_SDK=$SDK"
+          } >> "$GITHUB_ENV"
           echo "$CMDTOOLS" >> "$GITHUB_PATH"
+          echo "sdk.dir=$SDK" > LSPromise/local.properties
+          echo "Using SDK: $SDK"
+          echo "Using cmdline-tools: $CMDTOOLS"
 
       - name: Accept licenses and install SDK packages
         run: |
+          set -o pipefail
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" \
-                     "ndk;27.2.12479018" "cmake;3.22.1"
+          for attempt in 1 2 3; do
+            if sdkmanager --install \
+                "platform-tools" \
+                "platforms;android-37.0" \
+                "build-tools;37.0.0" \
+                "ndk;27.2.12479018" \
+                "cmake;3.22.1" 2>&1 | tail -40; then
+              break
+            fi
+            echo "sdkmanager attempt $attempt failed, retrying..."
+            sleep 10
+          done
+          sdkmanager --list_installed
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('LSPromise/**/*.gradle', 'LSPromise/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - name: Dump project config
         working-directory: LSPromise
         run: |
           cat gradle/wrapper/gradle-wrapper.properties
-          grep -rE "com.android.tools.build:gradle|com.android.application" build.gradle* app/build.gradle* || true
-          grep -rE "compileSdk|targetSdk" app/build.gradle* || true
+          grep -nE "com.android.tools.build:gradle|com.android.application" build.gradle settings.gradle || true
+          grep -nE "compileSdk|minSdk|targetSdk|ndkVersion" app/build.gradle || true
+          ls -la "$ANDROID_SDK/platforms" "$ANDROID_SDK/build-tools" "$ANDROID_SDK/ndk" || true
 
       - name: Build release APK
         working-directory: LSPromise
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace --info 2>&1 | tee gradle.log
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee gradle.log
+
+      - name: Show build failure details
+        if: failure()
+        working-directory: LSPromise
+        run: |
+          echo "===== gradle.log tail ====="
+          tail -n 200 gradle.log 2>/dev/null || echo "no gradle.log"
+          if [ -f build/reports/problems/problems-report.html ]; then
+            echo "===== problems report (text) ====="
+            sed -e 's/<[^>]*>//g' build/reports/problems/problems-report.html | tr -s ' \n' ' \n' | head -n 200
+          fi
 
       - name: Upload gradle log
         if: always()
@@ -51,8 +102,10 @@ jobs:
         with:
           name: gradle-log
           path: LSPromise/gradle.log
+          if-no-files-found: warn
 
       - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: LSPromise-release-apk
