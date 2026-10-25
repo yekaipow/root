@@ -35,11 +35,24 @@ android {
         ndk.abiFilters += "arm64-v8a"
     }
 
+    signingConfigs {
+        // 固定签名：CI 每次跑都用同一把 key，避免“更新安装失败/签名不一致”
+        release {
+            storeFile file("../keystore/lspromise.jks")
+            storePassword "android"
+            keyAlias "lspromise"
+            keyPassword "android"
+            enableV1Signing = false
+            enableV2Signing = true
+            enableV3Signing = true
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
         }
     }
 
