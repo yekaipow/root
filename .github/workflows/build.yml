@@ -85,6 +85,19 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee gradle.log
 
+      - name: Dump produced APKs
+        working-directory: LSPromise
+        run: |
+          set +e
+          AAPT2="$(ls "$ANDROID_SDK"/build-tools/*/aapt2 2>/dev/null | tail -1)"
+          find app/build/outputs/apk -name "*.apk" -print | while read -r apk; do
+            echo "===== $apk ====="
+            ls -l "$apk"
+            "$AAPT2" dump badging "$apk" 2>/dev/null | grep -E "^(package|sdkVersion|targetSdkVersion|native-code|application-label:)" || true
+            "$AAPT2" dump xmltree "$apk" --file AndroidManifest.xml 2>/dev/null | grep -E "minSdkVersion|targetSdkVersion" || true
+            echo
+          done
+
       - name: Show build failure details
         if: failure()
         working-directory: LSPromise
@@ -109,5 +122,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: LSPromise-release-apk
-          path: LSPromise/app/build/outputs/apk/release/*.apk
+          path: LSPromise/app/build/outputs/apk/**/*.apk
           if-no-files-found: error

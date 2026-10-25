@@ -7,12 +7,29 @@ android {
     compileSdk = 37
     ndkVersion "27.2.12479018"
 
+    // 两个变体：
+    //   android17 -> minSdk 37，原始漏洞链目标（Android 17 / API 37 设备）
+    //   compat    -> minSdk 34，仅用于低版本设备验证能否安装/启动，提权链路不保证
+    flavorDimensions "api"
+
+    productFlavors {
+        android17 {
+            dimension = "api"
+            minSdk = 37
+        }
+        compat {
+            dimension = "api"
+            minSdk = 34
+            applicationIdSuffix = ".compat"
+            versionNameSuffix = "-compat"
+        }
+    }
+
     defaultConfig {
         applicationId "org.lsposed.lspromise"
-        minSdk 37
-        targetSdk 37
-        versionCode 1
-        versionName "1.0"
+        targetSdk = 37
+        versionCode = 1
+        versionName = "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk.abiFilters += "arm64-v8a"
@@ -20,23 +37,25 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.debug
         }
     }
+
     externalNativeBuild {
         cmake {
             path("src/main/jni/CMakeLists.txt")
         }
-
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
+
     buildFeatures {
-        buildConfig true
+        buildConfig = true
     }
 }
 
